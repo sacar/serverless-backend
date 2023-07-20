@@ -1,0 +1,40 @@
+
+service: product-catalog-service
+
+provider:
+  name: aws
+  runtime: go1.x
+  stage: dev
+  region: us-east-1
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:Scan
+      Resource: "arn:aws:dynamodb:us-east-1:${aws:accountId}:table/ProductCatalog"
+
+functions:
+ productHandler:
+    handler: main
+    events:
+      - http:
+          path: /product
+          method: ANY
+
+
+# you can add CloudFormation resource templates here
+resources:
+  Resources:
+    ProductCatalogTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ProductCatalog
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
