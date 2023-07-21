@@ -11,16 +11,37 @@ provider:
       Action:
         - dynamodb:PutItem
         - dynamodb:Scan
+        - dynamodb:DeleteItem
       Resource: "arn:aws:dynamodb:us-east-1:${aws:accountId}:table/ProductCatalog"
+    - Effect: Allow
+      Action:
+        - "s3:GetObject"
+        - "s3:PutObject"
+        - "s3:DeleteObject"
+      Resource: "arn:aws:s3:::prodcut-thumbnails-sakar/*"
 
 functions:
- productHandler:
+  listProducts:
+    handler: main
+    events:
+      - http:
+          path: /products
+          method: GET
+          cors: true
+  createProduct:
     handler: main
     events:
       - http:
           path: /product
-          method: ANY
-
+          method: POST
+          cors: true
+  deleteProduct:
+    handler: main
+    events:
+      - http:
+          path: /product/{productID}
+          method: DELETE
+          cors: true
 
 # you can add CloudFormation resource templates here
 resources:
@@ -38,3 +59,7 @@ resources:
         ProvisionedThroughput:
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
+    ThumbnailBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: prodcut-thumbnails-sakar
