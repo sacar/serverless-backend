@@ -1,15 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"image"
-	"image/jpeg"
-	"io/ioutil"
 	"log"
-	"net/http"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -17,8 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/disintegration/imaging"
 	"github.com/google/uuid"
 )
 
@@ -31,7 +24,6 @@ type Product struct {
 }
 
 var dynamoDBClient *dynamodb.DynamoDB
-var s3Client *s3.S3
 var allHeaders map[string]string
 
 func init() {
@@ -51,43 +43,6 @@ func init() {
 	}
 
 	dynamoDBClient = dynamodb.New(sess)
-	s3Client = s3.New(sess)
-}
-
-func generateThumbnail(ctx context.Context, product Product) ([]byte, error) {
-	// Fetch the image from the provided URL
-	resp, err := http.Get(product.ImageURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch product image: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch product image, status code: %d", resp.StatusCode)
-	}
-
-	imageData, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read product image data: %v", err)
-	}
-
-	// Decode imageData to image.Image
-	img, _, err := image.Decode(bytes.NewReader(imageData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode product image: %v", err)
-	}
-
-	// Generate a thumbnail (e.g., 100x100 pixels) using imaging library
-	thumbnailImage := imaging.Resize(img, 100, 100, imaging.Lanczos)
-
-	// Encode the thumbnail image to a byte slice
-	var thumbnailData bytes.Buffer
-	err = jpeg.Encode(&thumbnailData, thumbnailImage, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode thumbnail image: %v", err)
-	}
-
-	return thumbnailData.Bytes(), nil
 }
 
 func createProduct(product Product) (*Product, error) {
@@ -140,32 +95,6 @@ func createProductHandler(ctx context.Context, request events.APIGatewayProxyReq
 			Body:       `{"error": "Error creating product"}`,
 		}, nil
 	}
-
-	// Launch a goroutine to generate the thumbnail and upload it to S3 asynchronously
-	// go func() {
-	log.Println("Generating thumbnail")
-	thumbnail, err := generateThumbnail(ctx, product)
-	if err != nil {
-		log.Printf("Error generating thumbnail for product ID %s: %v", product.ID, err)
-	}
-
-	// Upload the thumbnail to S3
-	s3Client := s3.New(session.Must(session.NewSession(&aws.Config{
-		Region: aws.String("us-east-1"),
-	})))
-	thumbnailFileName := fmt.Sprintf("thumbnails/%s_thumbnail.jpg", product.ID)
-	_, err = s3Client.PutObjectWithContext(ctx, &s3.PutObjectInput{
-		Bucket:      aws.String("prodcut-thumbnails-sakar"),
-		Key:         aws.String(thumbnailFileName),
-		ContentType: aws.String("image/jpeg"),
-		Body:        bytes.NewReader(thumbnail),
-		ACL:         aws.String("public-read"),
-	})
-	if err != nil {
-		log.Printf("Error uploading thumbnail to S3 for product ID %s: %v", product.ID, err)
-	}
-	log.Printf("Completed Generating thumbnail, %v", thumbnailFileName)
-	// }()
 
 	responseBody, _ := json.Marshal(createdProduct)
 	return events.APIGatewayProxyResponse{

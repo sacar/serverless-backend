@@ -1,4 +1,3 @@
-
 service: product-catalog-service
 
 provider:
@@ -22,28 +21,45 @@ provider:
 
 functions:
   listProducts:
-    handler: main
+    handler: bin/main
     events:
       - http:
           path: /products
           method: GET
           cors: true
   createProduct:
-    handler: main
+    handler: bin/main
     events:
       - http:
           path: /product
           method: POST
           cors: true
   deleteProduct:
-    handler: main
+    handler: bin/main
     events:
       - http:
           path: /product/{productID}
           method: DELETE
           cors: true
+  putItemTriggeredFunction:  # New Lambda function triggered by DynamoDB PutItem event
+    handler: bin/putItemTriggeredFunction
+    events:
+      - eventBridge:
+          eventBus: default
+          pattern:
+            source:
+              - "aws.dynamodb"
+            detail-type:
+              - "AWS API Call via CloudTrail"
+            detail:
+              eventName:
+                - "PutItem"
+              requestParameters:
+                tableName:
+                  - "ProductCatalog"
+    # Associate the custom inline policy with the putItemTriggeredFunction
+    role: PutItemTriggeredFunctionRole
 
-# you can add CloudFormation resource templates here
 resources:
   Resources:
     ProductCatalogTable:
@@ -56,6 +72,8 @@ resources:
         KeySchema:
           - AttributeName: id
             KeyType: HASH
+        StreamSpecification:
+          StreamViewType: "NEW_AND_OLD_IMAGES"
         ProvisionedThroughput:
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
@@ -63,3 +81,31 @@ resources:
       Type: AWS::S3::Bucket
       Properties:
         BucketName: prodcut-thumbnails-sakar
+    PutItemTriggeredFunctionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: PutItemTriggeredFunctionPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - "logs:CreateLogGroup"
+                    - "logs:CreateLogStream"
+                    - "logs:PutLogEvents"
+                  Resource: "arn:aws:logs:*:*:*"
+                - Effect: Allow
+                  Action:
+                    - dynamodb:DescribeStream
+                    - dynamodb:GetRecords
+                    - dynamodb:GetShardIterator
+                    - dynamodb:ListStreams
+                  Resource: "arn:aws:dynamodb:us-east-1:${aws:accountId}:table/ProductCatalog"
